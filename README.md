@@ -180,7 +180,10 @@ From script: `SugarSync.start( id )`, and `sugar-sync:complete`,
 `sugar-sync:cancelled` and `sugar-sync:error` on `document`, each with
 `detail.id`. Two plugins bundling this library each get their own REST
 namespace, script handle and option names, derived from the Strauss prefix;
-`Runtime::use_prefix( 'myplugin' )` names them yourself.
+`Runtime::use_prefix( 'myplugin' )` names them yourself. A prefix that itself
+starts `SugarCommerce\` keeps all its segments -- `SugarCommerce\Playground\Vendor\`
+gives `sugarcommerce-playground-vendor-sugarcommerce-jobs/v1` -- so a plugin of
+the family is never taken for an unprefixed copy.
 
 ## What it does not do
 

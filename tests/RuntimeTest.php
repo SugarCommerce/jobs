@@ -95,6 +95,23 @@ final class RuntimeTest extends TestCase {
 	}
 
 	/**
+	 * A plugin of the family prefixes with a namespace that also starts
+	 * "SugarCommerce", and its build is still its own.
+	 */
+	public function test_a_family_plugin_build_is_not_taken_for_the_library(): void {
+		$playground = Runtime::prefix_for( 'SugarCommerce\\Playground\\Vendor\\SugarCommerce\\Jobs\\Utils' );
+
+		$this->assertSame( 'sugarcommerce_playground_vendor_sugarcommerce_jobs', $playground );
+		$this->assertNotSame(
+			$playground,
+			Runtime::prefix_for( 'SugarCommerce\\Kitchen\\Vendor\\SugarCommerce\\Jobs\\Utils' ),
+			'Two plugins of the family share a name.'
+		);
+		$this->assertSame( 'sugarcart_sugarcommerce_jobs', Runtime::prefix_for( 'SugarCart\\Vendor\\SugarCommerce\\Jobs\\Utils' ), 'A plugin outside the family keeps its name.' );
+		$this->assertSame( 'sugarcommerce_jobs', Runtime::prefix_for( '\\SugarCommerce\\Jobs\\Utils\\' ) );
+	}
+
+	/**
 	 * The REST namespace is derived, not a constant.
 	 *
 	 * A constant is fixed at compile time and identical in every prefixed
