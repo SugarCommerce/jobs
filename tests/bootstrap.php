@@ -675,7 +675,6 @@ function jobs_reset(): void {
 
 	$statics = [
 		'SugarCommerce\Jobs\Scheduler'  => [ 'groups' => [] ],
-		'SugarCommerce\Jobs\Cron'       => [ 'jobs' => [], 'schedules' => [], 'hooked' => false ],
 		'SugarCommerce\Jobs\Sync'       => [ 'syncs' => [] ],
 		'SugarCommerce\Jobs\SyncRoutes' => [ 'registered' => false ],
 	];

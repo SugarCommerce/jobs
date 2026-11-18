@@ -18,9 +18,8 @@ use Closure;
  * Class Retry
  *
  * One answer to "try again, and when?", shared by everything in this
- * library that retries: a deferred Action Scheduler job
- * ({@see Scheduler::failed()}) and a row in a queue table
- * ({@see Queue::settle()}).
+ * library that retries -- a deferred Action Scheduler job
+ * ({@see Scheduler::failed()}) -- and by webhooks' sender.
  *
  * Two rules do most of the work.
  *
@@ -166,8 +165,7 @@ final class Retry {
 	 * @since 1.0.0
 	 *
 	 * @param mixed $error   Why it failed: a WP_Error with a `status` in its
-	 *                       data, a status code, an Outcome -- whatever
-	 *                       `retry_if` reads.
+	 *                       data, a status code -- whatever `retry_if` reads.
 	 * @param int   $attempt Which attempt just failed, counting from one.
 	 *
 	 * @return bool
@@ -261,8 +259,8 @@ final class Retry {
 	 *
 	 * @since 1.0.0
 	 *
-	 * @param mixed $error A WP_Error with a `status` in its data, a status
-	 *                     code, or an Outcome.
+	 * @param mixed $error A WP_Error with a `status` in its data, or a
+	 *                     status code.
 	 *
 	 * @return bool
 	 */
@@ -278,18 +276,14 @@ final class Retry {
 	 * @since 1.0.0
 	 *
 	 * @param mixed $error A status code; a WP_Error, or anything with
-	 *                     get_error_data(), carrying `status`; an Outcome;
-	 *                     an array with `status`.
+	 *                     get_error_data(), carrying `status`; an array with
+	 *                     `status`.
 	 *
 	 * @return int
 	 */
 	public static function status( mixed $error ): int {
 		if ( is_int( $error ) ) {
 			return $error;
-		}
-
-		if ( $error instanceof Outcome ) {
-			return $error->status;
 		}
 
 		if ( is_object( $error ) && method_exists( $error, 'get_error_data' ) ) {

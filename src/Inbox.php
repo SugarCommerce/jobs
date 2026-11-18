@@ -98,8 +98,8 @@ final class Inbox {
 		private readonly int $stale_after = self::STALE_AFTER,
 		?object $db = null,
 	) {
-		Table::identifier( $table );
-		Table::identifier( $key );
+		self::identifier( $table );
+		self::identifier( $key );
 
 		if ( $stale_after < 1 ) {
 			throw new InvalidArgumentException( 'A claim must hold for at least a second.' );
@@ -159,7 +159,7 @@ final class Inbox {
 			'date_claimed' => $now,
 		] + $fields;
 
-		$columns      = implode( ', ', array_map( [ Table::class, 'identifier' ], array_keys( $row ) ) );
+		$columns      = implode( ', ', array_map( [ self::class, 'identifier' ], array_keys( $row ) ) );
 		$placeholders = implode( ', ', array_fill( 0, count( $row ), '%s' ) );
 
 		// The insert is the claim: the unique index lets one delivery in.
@@ -249,5 +249,27 @@ final class Inbox {
 				'status'   => 'pending',
 			]
 		);
+	}
+
+	/**
+	 * A name that is safe to put in SQL as it stands.
+	 *
+	 * Table and column names are interpolated -- identifiers cannot be
+	 * bound -- so they are checked once, and anything else throws rather
+	 * than guess.
+	 *
+	 * @param string $name The table or column name.
+	 *
+	 * @return string The name.
+	 *
+	 * @throws InvalidArgumentException When it is not a plain identifier.
+	 */
+	private static function identifier( string $name ): string {
+		// `$` alone also matches before a final newline.
+		if ( 1 !== preg_match( '/^[A-Za-z_][A-Za-z0-9_]*$/D', $name ) ) {
+			throw new InvalidArgumentException( 'Not a plain identifier: ' . $name );
+		}
+
+		return $name;
 	}
 }

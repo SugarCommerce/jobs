@@ -13,6 +13,7 @@ declare( strict_types=1 );
 namespace SugarCommerce\Jobs;
 
 use SugarCommerce\Jobs\Utils\Runtime;
+use SugarCommerce\Plugin\Assets;
 use Throwable;
 use WP_Error;
 
@@ -327,10 +328,8 @@ final class Sync {
 		$handle = Runtime::handle( 'sync' );
 
 		if ( ! wp_script_is( $handle, 'registered' ) ) {
-			$base = self::assets_url();
-
-			wp_register_style( $handle, $base . 'css/sync.css', [], self::asset_version( 'css/sync.css' ) );
-			wp_register_script( $handle, $base . 'js/sync.js', [], self::asset_version( 'js/sync.js' ), true );
+			Assets::register_style( $handle, __FILE__, 'css/sync.css' );
+			Assets::register_script( $handle, __FILE__, 'js/sync.js' );
 
 			// Merged into rather than assigned over. Strauss gives each
 			// prefixed copy its own handle, so two plugins bundling this
@@ -675,73 +674,5 @@ final class Sync {
 	 */
 	public function retry_callback(): ?callable {
 		return is_callable( $this->config['retry_callback'] ) ? $this->config['retry_callback'] : null;
-	}
-
-	// =========================================================================
-	// Assets
-	// =========================================================================
-
-	/**
-	 * Where this library's `assets/` folder is on the web.
-	 *
-	 * Worked out from where this file is, because the library has no home
-	 * of its own: it is in a plugin's `vendor/`, copied under another name
-	 * by Strauss, or beside the plugins as a checkout. Wherever that is, it
-	 * is under the content directory or the WordPress root on nearly every
-	 * site, and a symlinked plugin is found through the map core keeps for
-	 * plugins_url().
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return string With a trailing slash.
-	 */
-	public static function assets_url(): string {
-		$dir = rtrim( wp_normalize_path( dirname( __DIR__ ) . '/assets' ), '/' );
-
-		$bases = [];
-
-		if ( defined( 'WP_CONTENT_DIR' ) ) {
-			$bases[] = [ WP_CONTENT_DIR, content_url() ];
-		}
-
-		$bases[] = [ ABSPATH, site_url( '/' ) ];
-
-		foreach ( $bases as [ $base, $base_url ] ) {
-			$base = rtrim( wp_normalize_path( (string) $base ), '/' );
-
-			// A prefix, and a whole one: /srv/www is not the start of
-			// /srv/www2/assets.
-			if ( '' !== $base && str_starts_with( $dir . '/', $base . '/' ) ) {
-				return rtrim( (string) $base_url, '/' ) . substr( $dir, strlen( $base ) ) . '/';
-			}
-		}
-
-		// __DIR__ resolves symlinks, so a symlinked plugin's real path can
-		// be anywhere on disk. Core maps each one back to its path under
-		// the plugins directory.
-		foreach ( (array) ( $GLOBALS['wp_plugin_paths'] ?? [] ) as $plugin_path => $real_path ) {
-			$real_path = rtrim( wp_normalize_path( (string) $real_path ), '/' );
-
-			if ( '' !== $real_path && str_starts_with( $dir . '/', $real_path . '/' ) ) {
-				return plugins_url( basename( (string) $plugin_path ) . substr( $dir, strlen( $real_path ) ) ) . '/';
-			}
-		}
-
-		return plugins_url( 'assets/', __DIR__ );
-	}
-
-	/**
-	 * A version for an asset: when it last changed.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string $file Its path under `assets/`.
-	 *
-	 * @return string
-	 */
-	private static function asset_version( string $file ): string {
-		$time = @filemtime( dirname( __DIR__ ) . '/assets/' . $file ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- a missing file is a version of "1".
-
-		return false === $time ? '1' : (string) $time;
 	}
 }

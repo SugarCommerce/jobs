@@ -10,7 +10,6 @@ declare( strict_types=1 );
 namespace SugarCommerce\Jobs\Tests;
 
 use PHPUnit\Framework\TestCase;
-use SugarCommerce\Jobs\Outcome;
 use SugarCommerce\Jobs\Retry;
 use WP_Error;
 
@@ -71,7 +70,6 @@ final class RetryTest extends TestCase {
 		$this->assertSame( 429, Retry::status( 429 ) );
 		$this->assertSame( 503, Retry::status( new WP_Error( 'http', 'down', [ 'status' => 503 ] ) ) );
 		$this->assertSame( 0, Retry::status( new WP_Error( 'http', 'down', 'not an array' ) ) );
-		$this->assertSame( 404, Retry::status( Outcome::failed( 'gone', 404 ) ) );
 		$this->assertSame( 400, Retry::status( [ 'status' => 400 ] ) );
 		$this->assertSame( 0, Retry::status( 'timed out' ) );
 	}

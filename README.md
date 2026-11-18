@@ -1,32 +1,31 @@
 # Jobs
 
-Background work for a WordPress plugin: scheduled jobs, deferred and retried
-jobs, a queue table, and long imports run from a button with a progress bar.
+Background work for a WordPress plugin: deferred, retried, recurring and
+local-time jobs on Action Scheduler, incoming webhooks handled once, and long
+imports run from a button with a progress bar.
 
 ## What it does
 
 Everything a plugin does outside the request that asked for it goes wrong in
-the same few ways. A cron event outlives the plugin and fires into nothing for
-ever. A job saved three times runs three times. A failed webhook is retried
-twelve times when the other end said no, or never when it was only down. Two
-cron runs overlap and send the same email twice, or one dies halfway and
-strands what it had taken. An import of four thousand orders times out, or
-the browser is closed and it starts again from page one.
+the same few ways. A job saved three times runs three times. A failed webhook
+is retried twelve times when the other end said no, or never when it was only
+down. A sender delivers the same event twice and the handler grants access
+twice. An import of four thousand orders times out, or the browser is closed
+and it starts again from page one.
 
-This is each of those done properly once: declared cron jobs that are cleaned
-up on uninstall, an Action Scheduler engine for deferred, deduplicated,
-retried, recurring and local-time jobs, a queue table that workers claim under
-a lease, and batch syncs that remember where they stopped.
+This is each of those done properly once, on what WordPress sites already run:
+an Action Scheduler engine for deferred, deduplicated, retried, recurring and
+local-time jobs, an inbox that claims each incoming event once, and batch
+syncs that remember where they stopped. Plain WP-Cron and Action Scheduler's
+own queue are used as they are -- see "What it does not do".
 
 ## Features
 
-* Declare a cron job once, and take every one away at uninstall
 * Push slow work out of a save, queued once however many times it is saved
 * Retry what failed on a stated schedule, and give up at once on a refusal
 * Run a job at eight in the morning where the site is, through the clocks changing
-* Drain a queue table from overlapping workers without sending a row twice
 * Handle an incoming webhook once, however often the sender delivers it
-* Keep a run inside a time limit, and let one failing step not stop the rest
+* Keep a run inside a time limit
 * Import thousands of records from a button, carrying on after a closed browser
 
 ## Installation
@@ -56,30 +55,6 @@ $queue->job( 'myplugin_push_product', function ( $product_id, int $attempt ) use
 // In the save handler. Saved three times in a minute: one job.
 $queue->defer( 'myplugin_push_product', $product_id );
 ```
-
-## Cron jobs
-
-```php
-use SugarCommerce\Jobs\Cron;
-
-add_action( 'init', function () {
-	Cron::schedule( 'every_five_minutes', 5 * MINUTE_IN_SECONDS, __( 'Every five minutes', 'myplugin' ) );
-
-	Cron::job( 'myplugin_sync', [
-		'schedule' => 'every_five_minutes',   // or hourly, daily...; empty for once
-		'callback' => [ Sync::class, 'run' ],
-		'args'     => [],
-	] );
-} );
-
-// uninstall.php: nothing is declared there, so name the prefix.
-Cron::unschedule_all( 'myplugin_' );
-```
-
-The callback is attached every request and the event is queued only once. A
-job naming a recurrence nobody added is refused, rather than run once and
-never again. `Cron::next_run()`, `Cron::scheduled()` and `Cron::unschedule()`
-take the hook and its arguments.
 
 ## Action Scheduler
 
@@ -120,8 +95,8 @@ jobs do nothing and return false.
 
 ## Retrying
 
-`Retry` is the one answer to "again, and when?" for the scheduler and the
-queue. No answer, a 408, a 429 and anything in the five hundreds are worth
+`Retry` is the one answer to "again, and when?" for the scheduler and for
+webhooks' sender. No answer, a 408, a 429 and anything in the five hundreds are worth
 another go; any other status is a refusal and is given up on at once. A
 `Retry-After` the other end sent wins, up to a day.
 
@@ -133,39 +108,6 @@ new Retry( [ 60, 300 ], attempts: 10 );              // the last wait repeats
 new Retry( $webhooks_policy );                       // any object with exhausted() and delay()
 new Retry( retry_if: fn( WP_Error $e ) => 'invalid_request' !== $e->get_error_code() );
 ```
-
-## A queue table
-
-Rows go in a table first and on the wire second. Each is claimed with one
-conditional UPDATE, so of two overlapping workers exactly one gets it; the
-claim is a lease, so a worker that dies leaves nothing stranded; and a worker
-that outlived its lease cannot write over the next one's result.
-
-```php
-use SugarCommerce\Jobs\{Budget, Outcome, Queue, Table};
-
-$table  = new Table( $wpdb->prefix . 'myplugin_outbox' );
-dbDelta( $table->schema( "\turl text NOT NULL,\n\tbody longtext NOT NULL,\n", $wpdb->get_charset_collate() ) );
-
-$outbox = new Queue( $table );
-$outbox->push( [ 'url' => $url, 'body' => wp_json_encode( $event ) ] );
-
-$queue->recurring( 'myplugin_drain', MINUTE_IN_SECONDS, fn() => $outbox->drain( function ( array $row ): Outcome {
-	$response = wp_remote_post( $row['url'], [ 'body' => $row['body'] ] );
-	$status   = (int) wp_remote_retrieve_response_code( $response );
-
-	return $status >= 200 && $status < 300
-		? Outcome::sent( $status )
-		: Outcome::failed( is_wp_error( $response ) ? $response->get_error_message() : "HTTP {$status}", $status );
-}, 50, new Budget( 20 ) ) );
-```
-
-**Pass the status** to `Outcome::failed()`: without one it is a transport
-failure, which is always retried. `Outcome::dropped()` gives up now.
-`overdue()` and `failed_count()` are for a health check, `retry( $id )` puts a
-failed row back, and `purge( $before, dry: true )` counts finished rows before
-removing them. It is at least once, not exactly once: give the receiver an id
-to deduplicate on.
 
 ## Receiving once
 
@@ -187,20 +129,17 @@ and an abandoned claim can be taken over after five minutes.
 ## Bounding a run
 
 ```php
-use SugarCommerce\Jobs\{Budget, Lock, Pass, Steps};
+use SugarCommerce\Jobs\Budget;
 
-Lock::with( 'myplugin_nightly', function () {          // one run at a time, held in the database
-	$steps = Steps::logging( 'myplugin nightly' );      // a step that throws is logged, the next runs
-	$pass  = new Pass( due: time(), limit: 500, budget: new Budget( 25 ) );
+$budget = new Budget( 20 );     // seconds, on a monotonic clock; 0 is unlimited
 
-	$steps->run( 'mail', fn() => $mail->drain( $send, 50, new Budget( 10 ) ), [] );
-	$steps->run( 'links', fn() => Links::sweep( $pass ), 0 );
-} );
+foreach ( $rows as $row ) {
+	if ( $budget->spent() ) {
+		break;                  // what is left is still due; the next run starts there
+	}
+	work( $row );
+}
 ```
-
-A lock whose run died is taken over when its lease ends (five minutes, or the
-`$ttl` given), and only its holder can let it go. `Budget` is a monotonic
-time limit; `Pass` carries one row count across a sweep of many customers.
 
 ## Batch syncs with a progress bar
 
@@ -249,24 +188,36 @@ WP-Cron, and Action Scheduler on top of it, runs on traffic: a quiet site runs
 a "daily" job late, and a punctual one needs a system cron calling
 `wp-cron.php`. Nothing here sends a row exactly once.
 
-From the retired SaaS `outbox` package the queue, inbox, lock, budget, pass
-and steps are all here, on `$wpdb` instead of SQLite; the file lock is a row
-in the options table, because a WordPress site may be several servers. Left
-out: its SQLite connection class and the `$now` arguments, which the shared
-`SugarCommerce\Dates\Clock` replaces.
+It keeps no queue, lock or cron wrapper of its own -- those were here once
+and went, because WordPress and Action Scheduler already do them:
+
+* a recurring or one-off job: `Scheduler::group()->recurring()` / `later()`,
+  or core's `wp_schedule_event()` / `wp_schedule_single_event()`;
+* a queue table worked by overlapping workers: Action Scheduler is one
+  (claims, retries, logs), and `once()` keeps a job from being queued twice;
+* one run at a time: an Action Scheduler action runs once, and a plugin that
+  needs a database lock takes MySQL's `GET_LOCK()`.
+
+From the retired SaaS `outbox` package the inbox and the budget are here, on
+`$wpdb` instead of SQLite. Its queue, lock, pass and steps are not, for the
+reason above.
+
+Its script and stylesheet URLs come from `SugarCommerce\Plugin\Assets`, the
+one asset-URL helper of these packages.
 
 ## Moving from arraypress/wp-*
 
-This library is `wp-register-cron` and `wp-inline-sync` in one. The global
-helpers are gone -- a global function is the one thing Strauss cannot prefix:
+This library is `wp-register-cron`'s scheduler and `wp-inline-sync` in one.
+The global helpers are gone -- a global function is the one thing Strauss
+cannot prefix -- and wp-register-cron's WP-Cron wrapper is core's again:
 
 | Was | Now |
 |---|---|
-| `register_cron_schedule( $name, $interval, $display )` | `Cron::schedule( $name, $interval, $display )` |
-| `register_cron_job( $hook, $config )` | `Cron::job( $hook, $config )` |
-| `unregister_cron_job( $hook, $args )` | `Cron::unschedule( $hook, $args )` |
-| `unregister_cron_jobs()` | `Cron::unschedule_all()` -- or `( 'myplugin_' )` to clear by prefix |
-| `cron_job_next_run( $hook, $args )` | `Cron::next_run( $hook, $args )` |
+| `register_cron_schedule( $name, $interval, $display )` | core's `cron_schedules` filter |
+| `register_cron_job( $hook, $config )` | `add_action( $hook, $callback )` + `wp_schedule_event()` when `! wp_next_scheduled()`, or `Scheduler::group()->recurring()` |
+| `unregister_cron_job( $hook, $args )` | `wp_clear_scheduled_hook( $hook, $args )` |
+| `unregister_cron_jobs()` | `wp_unschedule_hook( $hook )` for each hook; `Scheduler::group()->unschedule_all()` for Action Scheduler |
+| `cron_job_next_run( $hook, $args )` | `wp_next_scheduled( $hook, $args )` |
 | `register_sync( $id, $config )`, `new Sync( $id, $config )` | `Sync::register( $id, $config )` |
 | `get_sync( $id )`, `has_sync( $id )` | `Sync::get( $id )`, `Sync::has( $id )` |
 | `render_sync_button( $id, $args )` | `Sync::get( $id )?->render_button( $args )` |
@@ -276,8 +227,7 @@ Classes, under `SugarCommerce\Jobs`:
 
 | Was | Now |
 |---|---|
-| `RegisterCron\Jobs::add / remove / remove_all / next_run / all` | `Cron::job / unschedule / unschedule_all / next_run / jobs` |
-| `RegisterCron\Schedules::add / apply / exists / all` | `Cron::schedule / apply_schedules / has_schedule / schedules` |
+| `RegisterCron\Jobs`, `RegisterCron\Schedules` | removed: core's WP-Cron functions, as above |
 | `RegisterCron\Scheduler`, `RegisterCron\LocalJob` | `Scheduler`, `LocalJob` -- same methods |
 | `Scheduler::transient_failure( $error )` | `Retry::transient( $error )` -- a 408 is now worth retrying too |
 | `InlineSync\Registry::instance()->get / has / all / unregister` | `Sync::get / has / all / unregister` |
@@ -287,6 +237,8 @@ Classes, under `SugarCommerce\Jobs`:
 | `InlineSync\RestApi`, `RestApi::CHUNK_SIZE` | `SyncRoutes`; the `chunk_size` setting, default 5 |
 | `InlineSync\Retry::register / page / process` | `SyncRetry::register / page / process` |
 | `InlineSync\Progress`, `InlineSync\Utils\Runtime` | `Progress`, `Utils\Runtime` |
+| `Sync::assets_url()` | `SugarCommerce\Plugin\Assets::url( __FILE__, … )` |
+| `Cron`, `Queue`, `Table`, `Outcome`, `Lock`, `Pass`, `Steps` (earlier builds of this package) | removed -- WP-Cron, Action Scheduler and `GET_LOCK()`, as in "What it does not do"; `Inbox` and `Retry` stay |
 
 In the browser, and stored:
 

@@ -1,6 +1,6 @@
 {
   "name": "sugarcommerce/jobs",
-  "description": "Background work for a WordPress plugin: cron jobs and schedules cleaned up on uninstall, Action Scheduler jobs that are deferred, retried, recurring or due at a local time, a queue table worked under a lease, and batch syncs with a progress bar that carry on where they stopped.",
+  "description": "Background work for a WordPress plugin: Action Scheduler jobs that are deferred, retried, recurring or due at a local time, incoming webhooks handled once, and batch syncs with a progress bar that carry on where they stopped.",
   "type": "library",
   "license": "GPL-2.0-or-later",
   "homepage": "https://github.com/sugarcommerce/jobs",
@@ -17,11 +17,19 @@
       "options": {
         "symlink": false
       }
+    },
+    {
+      "type": "path",
+      "url": "../plugin",
+      "options": {
+        "symlink": false
+      }
     }
   ],
   "require": {
     "php": ">=8.3",
-    "sugarcommerce/dates": "dev-main"
+    "sugarcommerce/dates": "dev-main",
+    "sugarcommerce/plugin": "dev-main"
   },
   "autoload": {
     "psr-4": {
