@@ -1,0 +1,82 @@
+{
+  "name": "sugarcommerce/jobs",
+  "description": "Background work for a WordPress plugin: cron jobs and schedules cleaned up on uninstall, Action Scheduler jobs that are deferred, retried, recurring or due at a local time, a queue table worked under a lease, and batch syncs with a progress bar that carry on where they stopped.",
+  "type": "library",
+  "license": "GPL-2.0-or-later",
+  "homepage": "https://github.com/sugarcommerce/jobs",
+  "authors": [
+    {
+      "name": "David Sherlock",
+      "homepage": "https://arraypress.com/"
+    }
+  ],
+  "repositories": [
+    {
+      "type": "path",
+      "url": "../dates",
+      "options": {
+        "symlink": false
+      }
+    }
+  ],
+  "require": {
+    "php": ">=8.3",
+    "sugarcommerce/dates": "dev-main"
+  },
+  "autoload": {
+    "psr-4": {
+      "SugarCommerce\\Jobs\\": "src/"
+    }
+  },
+  "config": {
+    "optimize-autoloader": true,
+    "sort-packages": true,
+    "preferred-install": "dist",
+    "allow-plugins": {
+      "dealerdirect/phpcodesniffer-composer-installer": false
+    }
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "support": {
+    "issues": "https://github.com/sugarcommerce/jobs/issues",
+    "source": "https://github.com/sugarcommerce/jobs"
+  },
+  "keywords": [
+    "wordpress",
+    "cron",
+    "wp-cron",
+    "action-scheduler",
+    "queue",
+    "outbox",
+    "retry",
+    "lease",
+    "batch",
+    "sync",
+    "progress"
+  ],
+  "require-dev": {
+    "phpcompatibility/phpcompatibility-wp": "^2.1",
+    "phpunit/phpunit": "^12.0",
+    "squizlabs/php_codesniffer": "^3.13.5",
+    "wp-coding-standards/wpcs": "^3.4"
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "SugarCommerce\\Jobs\\Tests\\": "tests/"
+    },
+    "exclude-from-classmap": [
+      "/tests/bootstrap.php"
+    ]
+  },
+  "scripts": {
+    "test": [
+      "phpunit --exclude-group without-action-scheduler",
+      "@putenv WITHOUT_ACTION_SCHEDULER=1",
+      "phpunit --group without-action-scheduler"
+    ],
+    "lint": "phpcs",
+    "format": "phpcbf --standard=phpcs-format.xml.dist",
+    "format:check": "phpcs --standard=phpcs-format.xml.dist"
+  }
+}

@@ -1,0 +1,191 @@
+/**
+ * Batch sync: the progress bar and what it says at the end.
+ *
+ * Minimal styles for the sync progress bar and completion notice.
+ * Designed to sit above admin tables without disrupting layout.
+ *
+ * @package SugarCommerce\Jobs
+ * @since   1.0.0
+ */
+
+/* =========================================================================
+   Container
+   ========================================================================= */
+
+.sugar-sync-bar {
+    display: none;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-left: 4px solid #2271b1;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+}
+
+.sugar-sync-bar.is-active {
+    display: block;
+}
+
+.sugar-sync-bar.is-complete {
+    border-left-color: #00a32a;
+}
+
+.sugar-sync-bar.is-error {
+    border-left-color: #d63638;
+}
+
+/* =========================================================================
+   Header (title + cancel)
+   ========================================================================= */
+
+.sugar-sync-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.sugar-sync-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1d2327;
+    margin: 0;
+    line-height: 1.4;
+}
+
+.sugar-sync-cancel {
+    font-size: 12px;
+    color: #b32d2e;
+    text-decoration: none;
+    cursor: pointer;
+    border: none;
+    background: none;
+    padding: 0;
+}
+
+.sugar-sync-cancel:hover {
+    color: #9a2021;
+    text-decoration: underline;
+}
+
+/* =========================================================================
+   Progress Track
+   ========================================================================= */
+
+.sugar-sync-progress {
+    margin-bottom: 8px;
+}
+
+.sugar-sync-track {
+    height: 8px;
+    background: #f0f0f1;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.sugar-sync-fill {
+    height: 100%;
+    background: #2271b1;
+    border-radius: 4px;
+    width: 0;
+    transition: width 0.3s ease;
+}
+
+.is-complete .sugar-sync-fill {
+    background: #00a32a;
+}
+
+.is-error .sugar-sync-fill {
+    background: #d63638;
+}
+
+/* =========================================================================
+   Status Line (count + current item name)
+   ========================================================================= */
+
+.sugar-sync-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #646970;
+    line-height: 1.4;
+}
+
+.sugar-sync-count {
+    flex-shrink: 0;
+}
+
+.sugar-sync-current {
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 60%;
+    font-style: italic;
+    color: #787c82;
+}
+
+/* =========================================================================
+   Result Notice (shown on complete/error/cancel)
+   ========================================================================= */
+
+.sugar-sync-result {
+    display: none;
+    font-size: 13px;
+    color: #1d2327;
+    line-height: 1.5;
+}
+
+/* Show result, hide progress when finished */
+.sugar-sync-bar.is-complete .sugar-sync-result,
+.sugar-sync-bar.is-error .sugar-sync-result {
+    display: block;
+}
+
+.sugar-sync-bar.is-complete .sugar-sync-progress,
+.sugar-sync-bar.is-error .sugar-sync-progress,
+.sugar-sync-bar.is-complete .sugar-sync-status,
+.sugar-sync-bar.is-error .sugar-sync-status,
+.sugar-sync-bar.is-complete .sugar-sync-cancel,
+.sugar-sync-bar.is-error .sugar-sync-cancel {
+    display: none;
+}
+
+.sugar-sync-dismiss {
+    font-size: 12px;
+    color: #2271b1;
+    text-decoration: none;
+    cursor: pointer;
+    border: none;
+    background: none;
+    padding: 0;
+    margin-left: 12px;
+}
+
+.sugar-sync-dismiss:hover {
+    color: #135e96;
+    text-decoration: underline;
+}
+
+.sugar-sync-reloading {
+    font-size: 12px;
+    color: #787c82;
+    font-style: italic;
+    margin-left: 12px;
+}
+
+.sugar-sync-error-summary {
+    color: #d63638;
+    margin-top: 4px;
+    font-size: 12px;
+}
+
+/* =========================================================================
+   Trigger Button (disabled state while syncing)
+   ========================================================================= */
+
+.sugar-sync-trigger.is-syncing {
+    opacity: 0.6;
+    pointer-events: none;
+}
