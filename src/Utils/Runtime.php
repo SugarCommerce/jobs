@@ -13,6 +13,8 @@ declare( strict_types=1 );
 
 namespace SugarCommerce\Jobs\Utils;
 
+use SugarCommerce\Plugin\Build;
+
 /**
  * Class Runtime
  *
@@ -107,6 +109,10 @@ final class Runtime {
 	 * which cannot be changed at runtime, so a test reaches the prefixed
 	 * case by asking the rule directly.
 	 *
+	 * The rule is {@see Build::name()}, shared by every package that names
+	 * its build: a plugin's own "…\Lib" namespace is named for every
+	 * segment before "Lib", so two plugins of one vendor never share names.
+	 *
 	 * @since 1.0.0
 	 *
 	 * @param string $under The namespace this class is compiled under,
@@ -115,28 +121,9 @@ final class Runtime {
 	 * @return string
 	 */
 	public static function prefix_for( string $under ): string {
-		$under = explode( '\\', trim( $under, '\\' ) );
+		$build = Build::name( $under, self::OWN_SEGMENTS );
 
-		// What Strauss put in front of this package's own namespace. A
-		// plugin of the SugarCommerce family prefixes with a namespace that
-		// starts "SugarCommerce\" too -- "SugarCommerce\Playground\Vendor\"
-		// -- so the first segment alone cannot tell a prefixed build from an
-		// unprefixed one: it named both "sugarcommerce_jobs", and that
-		// plugin's REST namespace, handle and sync progress were every
-		// unprefixed copy's.
-		$segments = array_slice( $under, 0, -self::OWN_SEGMENTS );
-
-		if ( array() === $segments || '' === $segments[0] ) {
-			return self::LIBRARY;
-		}
-
-		// Only the first segment, as it always was, where that is enough:
-		// "SugarCart\Vendor" is "sugarcart". A family plugin's prefix needs
-		// all of its segments to be told apart from the library and from
-		// its siblings.
-		$slug = self::slug( 'SugarCommerce' === $segments[0] ? implode( '_', $segments ) : $segments[0] );
-
-		return '' === $slug ? self::LIBRARY : $slug . '_' . self::LIBRARY;
+		return '' === $build ? self::LIBRARY : str_replace( '-', '_', $build ) . '_' . self::LIBRARY;
 	}
 
 	/**

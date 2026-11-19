@@ -201,4 +201,22 @@ final class RuntimeTest extends TestCase {
 			);
 		}
 	}
+
+	/**
+	 * A plugin that bundles the packages into its own Lib namespace is named
+	 * for every segment before Lib, so two plugins of one vendor are two
+	 * builds; a one-segment Lib, a prefix and an unprefixed copy keep their
+	 * names.
+	 */
+	public function test_a_plugins_own_lib_namespace_names_the_build(): void {
+		$this->assertSame( 'arraypress_edd_fraudfilter_sugarcommerce_jobs', Runtime::prefix_for( 'ArrayPress\\EDD\\FraudFilter\\Lib\\Jobs\\Utils' ) );
+		$this->assertNotSame(
+			Runtime::prefix_for( 'ArrayPress\\EDD\\FraudFilter\\Lib\\Jobs\\Utils' ),
+			Runtime::prefix_for( 'ArrayPress\\EDD\\SalePrices\\Lib\\Jobs\\Utils' ),
+			'Two plugins of one vendor share a name.'
+		);
+		$this->assertSame( 'playground_sugarcommerce_jobs', Runtime::prefix_for( 'Playground\\Lib\\Jobs\\Utils' ), 'A one-segment Lib changed its name.' );
+		$this->assertSame( 'sugarcart_sugarcommerce_jobs', Runtime::prefix_for( 'SugarCart\\Vendor\\SugarCommerce\\Jobs\\Utils' ), 'A prefix changed its name.' );
+		$this->assertSame( 'sugarcommerce_jobs', Runtime::prefix_for( 'SugarCommerce\\Jobs\\Utils' ), 'The unprefixed copy changed its name.' );
+	}
 }
