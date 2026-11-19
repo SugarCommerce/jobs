@@ -98,13 +98,20 @@ jobs do nothing and return false.
 `Retry` is the one answer to "again, and when?" for the scheduler and for
 webhooks' sender. No answer, a 408, a 429 and anything in the five hundreds are worth
 another go; any other status is a refusal and is given up on at once. A
-`Retry-After` the other end sent wins, up to a day.
+`Retry-After` the other end sent wins, exactly, up to a day.
+
+Each stated wait is spread a tenth either way (`Retry::JITTER`): a minute is 54
+to 66 seconds. Without it every job that failed in one outage comes back in the
+same second and knocks the other end over again as it recovers. `jitter: 0`
+waits exactly; `'jitter' => 25` in a group's or a job's configuration spreads by
+a quarter.
 
 ```php
 use SugarCommerce\Jobs\Retry;
 
 new Retry( [ 60, 300, 900 ] );                       // three waits, four tries
 new Retry( [ 60, 300 ], attempts: 10 );              // the last wait repeats
+new Retry( [ 60, 300 ], jitter: 0 );                 // exactly 60, then 300
 new Retry( $webhooks_policy );                       // any object with exhausted() and delay()
 new Retry( retry_if: fn( WP_Error $e ) => 'invalid_request' !== $e->get_error_code() );
 ```
@@ -241,6 +248,7 @@ Classes, under `SugarCommerce\Jobs`:
 | `InlineSync\Retry::register / page / process` | `SyncRetry::register / page / process` |
 | `InlineSync\Progress`, `InlineSync\Utils\Runtime` | `Progress`, `Utils\Runtime` |
 | `Sync::assets_url()` | `SugarCommerce\Plugin\Assets::url( __FILE__, … )` |
+| a stated schedule waited to the second | spread a tenth either way by default; `'jitter' => 0` for exact |
 | `Cron`, `Queue`, `Table`, `Outcome`, `Lock`, `Pass`, `Steps` (earlier builds of this package) | removed -- WP-Cron, Action Scheduler and `GET_LOCK()`, as in "What it does not do"; `Inbox` and `Retry` stay |
 
 In the browser, and stored:

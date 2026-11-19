@@ -29,13 +29,17 @@ use Closure;
  * just as firmly in six hours, and retrying it four more times only delays
  * somebody being told. See {@see self::transient()}.
  *
- * **Wait as stated.** A list of waits, in order, the last standing for any
- * after it -- the schedule a plugin has usually promised somebody in its
- * documentation. A `Retry-After` the other end sent wins, because it knows
- * more about its own recovery than any schedule does.
+ * **Wait as stated, give or take.** A list of waits, in order, the last
+ * standing for any after it -- the schedule a plugin has usually promised
+ * somebody in its documentation -- each spread by a tenth either way
+ * ({@see self::JITTER}). Without the spread, every job that failed in one
+ * outage comes back in the same second and knocks the other end over
+ * again as it recovers. A `Retry-After` the other end sent wins, exactly,
+ * because it knows more about its own recovery than any schedule does.
  *
  *     new Retry( [ 60, 300, 900, 3600, 21600 ] );   // five waits, six tries
  *     new Retry( [ 60, 300 ], attempts: 10 );        // 60, 300, 300, 300 ...
+ *     new Retry( [ 60, 300 ], jitter: 0 );           // exactly 60, then 300
  *
  * Or hand it any object with `exhausted( int )` and `delay( int )` -- a
  * webhook library's backoff curve with jitter -- and it is asked instead. An
@@ -63,6 +67,20 @@ final class Retry {
 	 * @var int
 	 */
 	public const MAX_RETRY_AFTER = 86400;
+
+	/**
+	 * How far a stated wait is spread, by default: a percentage either way.
+	 *
+	 * A tenth, so a minute is 54 to 66 seconds and six hours is within
+	 * thirty-six minutes of six hours: close enough to the schedule a
+	 * plugin promised, far enough apart that a thousand jobs do not land in
+	 * one second. The retired SaaS curve spread by a quarter; a stated
+	 * schedule is held closer.
+	 *
+	 * @since 1.0.0
+	 * @var int
+	 */
+	public const JITTER = 10;
 
 	/**
 	 * Seconds to wait after each failure, in order.
@@ -98,6 +116,14 @@ final class Retry {
 	private ?Closure $retry_if;
 
 	/**
+	 * How far each stated wait is spread, as a percentage either way.
+	 *
+	 * @since 1.0.0
+	 * @var int
+	 */
+	private int $jitter;
+
+	/**
 	 * A retry schedule.
 	 *
 	 * @since 1.0.0
@@ -112,16 +138,21 @@ final class Retry {
 	 * @param callable|null $retry_if Whether a failure is worth another
 	 *                                go: ( $error ): bool. Null for
 	 *                                self::transient().
+	 * @param int           $jitter   How far each stated wait is spread,
+	 *                                as a percentage either way, 0 to
+	 *                                100. 0 waits exactly. A policy object
+	 *                                spreads its own.
 	 */
-	public function __construct( array|object $waits = self::WAITS, ?int $attempts = null, ?callable $retry_if = null ) {
+	public function __construct( array|object $waits = self::WAITS, ?int $attempts = null, ?callable $retry_if = null, int $jitter = self::JITTER ) {
 		$this->policy   = is_object( $waits ) && ! $waits instanceof self ? $waits : null;
 		$this->waits    = is_array( $waits ) ? self::clean( $waits ) : [];
 		$this->attempts = $attempts;
 		$this->retry_if = null === $retry_if ? null : Closure::fromCallable( $retry_if );
+		$this->jitter   = max( 0, min( 100, $jitter ) );
 	}
 
 	/**
-	 * A schedule from configuration: `retry`, `attempts`, `retry_if`.
+	 * A schedule from configuration: `retry`, `attempts`, `retry_if`, `jitter`.
 	 *
 	 * What is left out comes from `$base`. A configuration that states its
 	 * own waits and not how many attempts means one more than it has waits,
@@ -137,7 +168,7 @@ final class Retry {
 	public static function from( array $config, ?self $base = null ): self {
 		$retry = $config['retry'] ?? null;
 
-		if ( $retry instanceof self && ! isset( $config['attempts'] ) && ! isset( $config['retry_if'] ) ) {
+		if ( $retry instanceof self && ! isset( $config['attempts'] ) && ! isset( $config['retry_if'] ) && ! isset( $config['jitter'] ) ) {
 			return $retry;
 		}
 
@@ -153,8 +184,9 @@ final class Retry {
 			? ( null === $config['attempts'] ? null : (int) $config['attempts'] )
 			: ( null !== $retry ? null : $base->attempts );
 		$retry_if = is_callable( $config['retry_if'] ?? null ) ? $config['retry_if'] : $base->retry_if;
+		$jitter   = isset( $config['jitter'] ) ? (int) $config['jitter'] : $base->jitter;
 
-		return new self( is_object( $waits ) ? $waits : (array) $waits, $attempts, $retry_if );
+		return new self( is_object( $waits ) ? $waits : (array) $waits, $attempts, $retry_if, $jitter );
 	}
 
 	/**
@@ -218,9 +250,11 @@ final class Retry {
 	 * @param int      $attempt     Which attempt just failed, counting from
 	 *                              one.
 	 * @param int|null $retry_after Seconds the other end asked for, when it
-	 *                              said. Honoured up to a day.
+	 *                              said. Honoured up to a day, exactly.
 	 *
-	 * @return int
+	 * @return int A stated wait spread by the jitter, never below a second.
+	 *
+	 * @throws \Random\RandomException When the CSPRNG is unavailable.
 	 */
 	public function delay( int $attempt, ?int $retry_after = null ): int {
 		if ( null !== $retry_after && $retry_after > 0 ) {
@@ -235,7 +269,24 @@ final class Retry {
 			return 0;
 		}
 
-		return $this->waits[ max( 1, $attempt ) - 1 ] ?? $this->waits[ count( $this->waits ) - 1 ];
+		$wait = $this->waits[ max( 1, $attempt ) - 1 ] ?? $this->waits[ count( $this->waits ) - 1 ];
+
+		// Spread, so a recovering receiver is not met by every job that
+		// failed with it in the same second.
+		$spread = intdiv( $wait * $this->jitter, 100 );
+
+		return 0 === $spread ? $wait : max( 1, $wait - $spread + random_int( 0, $spread * 2 ) );
+	}
+
+	/**
+	 * How far each stated wait is spread, as a percentage either way.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return int
+	 */
+	public function jitter(): int {
+		return $this->jitter;
 	}
 
 	/**

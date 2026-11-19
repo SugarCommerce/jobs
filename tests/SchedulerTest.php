@@ -200,7 +200,7 @@ final class SchedulerTest extends TestCase {
 		$this->assertTrue( $queue->failed( 'myplugin_sync', 12, 2, $this->error( 503 ) ) );
 
 		$this->assertSame( [ 12, 3 ], $this->queued()[0]['args'] );
-		$this->assertEqualsWithDelta( time() + 300, $this->queued()[0]['timestamp'], 2 );
+		$this->assertEqualsWithDelta( time() + 300, $this->queued()[0]['timestamp'], 30 + 2, 'Five minutes, give or take a tenth.' );
 	}
 
 	/**
@@ -338,10 +338,11 @@ final class SchedulerTest extends TestCase {
 	}
 
 	/**
-	 * A stated schedule is waited exactly, its last wait standing after it.
+	 * A stated schedule with no jitter is waited exactly, its last wait
+	 * standing after it.
 	 */
 	public function test_a_stated_schedule_is_waited_exactly(): void {
-		$queue = Scheduler::group( 'myplugin', [ 'retry' => [ 60, 300, 900, 3600, 21600 ], 'attempts' => 5 ] );
+		$queue = Scheduler::group( 'myplugin', [ 'retry' => [ 60, 300, 900, 3600, 21600 ], 'attempts' => 5, 'jitter' => 0 ] );
 
 		$this->assertSame( 60, $queue->retry_delay( 'myplugin_sync', 1 ) );
 		$this->assertSame( 300, $queue->retry_delay( 'myplugin_sync', 2 ) );
@@ -369,7 +370,7 @@ final class SchedulerTest extends TestCase {
 	 * Waits that are not whole positive seconds are dropped.
 	 */
 	public function test_only_real_waits_are_kept(): void {
-		$queue = Scheduler::group( 'myplugin', [ 'retry' => [ 60, 0, -5, 'soon', '120', 1.5 ] ] );
+		$queue = Scheduler::group( 'myplugin', [ 'retry' => [ 60, 0, -5, 'soon', '120', 1.5 ], 'jitter' => 0 ] );
 
 		$this->assertSame( 60, $queue->retry_delay( 'myplugin_sync', 1 ) );
 		$this->assertSame( 120, $queue->retry_delay( 'myplugin_sync', 2 ) );
@@ -382,7 +383,7 @@ final class SchedulerTest extends TestCase {
 	public function test_a_job_overrides_the_group(): void {
 		$queue = Scheduler::group( 'myplugin', [ 'retry' => [ 60 ], 'attempts' => 5 ] );
 
-		$queue->job( 'myplugin_push', static fn() => null, [ 'retry' => [ 30, 120, 600 ] ] );
+		$queue->job( 'myplugin_push', static fn() => null, [ 'retry' => [ 30, 120, 600 ], 'jitter' => 0 ] );
 
 		$this->assertSame( 120, $queue->retry_delay( 'myplugin_push', 2 ) );
 		$this->assertTrue( $queue->exhausted( 'myplugin_push', 4 ), 'Its own waits, so its own count.' );

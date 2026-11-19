@@ -128,7 +128,8 @@ final class Scheduler {
 	 *
 	 * @param string               $group    The Action Scheduler group.
 	 * @param array<string, mixed> $defaults What every job gets: retry,
-	 *                                       attempts, retry_if, gave_up.
+	 *                                       attempts, retry_if, jitter,
+	 *                                       gave_up.
 	 *                                       See self::job().
 	 */
 	public function __construct( string $group, array $defaults = [] ) {
@@ -269,6 +270,10 @@ final class Scheduler {
 	 *                                  go: ( $error ): bool. By default no
 	 *                                  answer at all, a timeout, a 429 and
 	 *                                  anything in the five hundreds are.
+	 *     @type int          $jitter   How far each wait is spread, as a
+	 *                                  percentage either way. A tenth by
+	 *                                  default ({@see Retry::JITTER}); 0
+	 *                                  waits exactly.
 	 *     @type callable     $gave_up  Told when a job is given up on:
 	 *                                  ( $error, $id, int $attempt, array
 	 *                                  $context, string $hook ).
@@ -763,7 +768,7 @@ final class Scheduler {
 	 *
 	 * @since 1.0.0
 	 *
-	 * @param array<string, mixed> $defaults retry, attempts, retry_if,
+	 * @param array<string, mixed> $defaults retry, attempts, retry_if, jitter,
 	 *                                       gave_up.
 	 *
 	 * @return void

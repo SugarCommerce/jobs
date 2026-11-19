@@ -27,15 +27,60 @@ final class RetryTest extends TestCase {
 		$this->assertSame( Retry::WAITS, $retry->waits() );
 		$this->assertFalse( $retry->exhausted( 5 ) );
 		$this->assertTrue( $retry->exhausted( 6 ) );
-		$this->assertSame( 60, $retry->delay( 1 ) );
-		$this->assertSame( 21600, $retry->delay( 5 ) );
+		$this->assertEqualsWithDelta( 60, $retry->delay( 1 ), 6 );
+		$this->assertEqualsWithDelta( 21600, $retry->delay( 5 ), 2160 );
+	}
+
+	/**
+	 * A stated wait is spread a tenth either way, so a thousand jobs that
+	 * failed in one outage do not all come back in the same second.
+	 */
+	public function test_a_stated_wait_is_spread_by_default(): void {
+		$retry = new Retry( [ 600 ] );
+		$waits = [];
+
+		for ( $i = 0; $i < 200; $i++ ) {
+			$waits[] = $retry->delay( 1 );
+		}
+
+		$this->assertSame( Retry::JITTER, $retry->jitter() );
+		$this->assertGreaterThanOrEqual( 540, min( $waits ) );
+		$this->assertLessThanOrEqual( 660, max( $waits ) );
+		$this->assertGreaterThan( 20, count( array_unique( $waits ) ), 'Spread, not one second for all of them.' );
+	}
+
+	/**
+	 * Nought waits exactly; more than a hundred is a hundred; a spread
+	 * never makes a wait of nought.
+	 */
+	public function test_jitter_is_bounded(): void {
+		$this->assertSame( 600, ( new Retry( [ 600 ], jitter: 0 ) )->delay( 1 ) );
+		$this->assertSame( 0, ( new Retry( [ 600 ], jitter: -5 ) )->jitter() );
+		$this->assertSame( 100, ( new Retry( [ 600 ], jitter: 250 ) )->jitter() );
+		$this->assertSame( 9, ( new Retry( [ 9 ] ) )->delay( 1 ), 'Too short to spread by a tenth.' );
+
+		for ( $i = 0; $i < 50; $i++ ) {
+			$this->assertGreaterThanOrEqual( 1, ( new Retry( [ 2 ], jitter: 100 ) )->delay( 1 ) );
+		}
+	}
+
+	/**
+	 * Configuration states the spread, and a job keeps its group's.
+	 */
+	public function test_jitter_comes_from_configuration(): void {
+		$base = Retry::from( [ 'jitter' => 0 ] );
+
+		$this->assertSame( 0, $base->jitter() );
+		$this->assertSame( 0, Retry::from( [ 'retry' => [ 30 ] ], $base )->jitter(), 'Inherited.' );
+		$this->assertSame( 25, Retry::from( [ 'jitter' => 25 ], $base )->jitter() );
+		$this->assertSame( 5, Retry::from( [ 'retry' => new Retry( [ 60 ] ), 'jitter' => 5 ] )->jitter() );
 	}
 
 	/**
 	 * Past the last wait, the last wait again.
 	 */
 	public function test_the_last_wait_stands_for_any_after_it(): void {
-		$retry = new Retry( [ 60, 300 ], 10 );
+		$retry = new Retry( [ 60, 300 ], 10, jitter: 0 );
 
 		$this->assertSame( 300, $retry->delay( 2 ) );
 		$this->assertSame( 300, $retry->delay( 9 ) );
@@ -58,9 +103,9 @@ final class RetryTest extends TestCase {
 	public function test_a_retry_after_is_honoured_up_to_a_day(): void {
 		$retry = new Retry( [ 60 ] );
 
-		$this->assertSame( 120, $retry->delay( 1, 120 ) );
+		$this->assertSame( 120, $retry->delay( 1, 120 ), 'Exactly: the other end knows, so it is not spread.' );
 		$this->assertSame( Retry::MAX_RETRY_AFTER, $retry->delay( 1, 7 * Retry::MAX_RETRY_AFTER ) );
-		$this->assertSame( 60, $retry->delay( 1, 0 ) );
+		$this->assertSame( 60, ( new Retry( [ 60 ], jitter: 0 ) )->delay( 1, 0 ) );
 	}
 
 	/**
