@@ -88,6 +88,10 @@ $queue->at( 'myplugin_summary', [ Summary::class, 'send' ], [
 $queue->unschedule_all();                                       // uninstall
 ```
 
+A recurring job is booked on `init` of an admin, cron or WP-CLI request
+when it is not in the calendar yet -- never on a visitor's page, a webhook
+or a REST call, which would otherwise pay two queries a job every time.
+
 A deferred job's arguments are `[ $id, $attempt ]`; `$id` may be a string.
 Without Action Scheduler a deferred job runs where it stands and is never
 retried in the same request; `later()`, `once()`, recurring and local-time

@@ -467,6 +467,8 @@ final class SchedulerTest extends TestCase {
 	 * A recurring job is put in the calendar on `init`, and once.
 	 */
 	public function test_a_recurring_job_is_scheduled_once_on_init(): void {
+		$GLOBALS['jobs_is_admin'] = true;
+
 		$queue = Scheduler::group( 'myplugin' );
 
 		$this->assertTrue( $queue->recurring( 'myplugin_sweep', DAY_IN_SECONDS, static fn() => null ) );
@@ -489,10 +491,30 @@ final class SchedulerTest extends TestCase {
 	}
 
 	/**
+	 * A visitor's request does not look at the calendar: only the admin and
+	 * cron do.
+	 */
+	public function test_a_visitor_request_does_not_book_a_recurring_job(): void {
+		Scheduler::group( 'myplugin' )->recurring( 'myplugin_sweep', DAY_IN_SECONDS, static fn() => null );
+
+		jobs_fire_init();
+
+		$this->assertSame( [], $this->queued() );
+
+		$GLOBALS['jobs_doing_cron'] = true;
+
+		Scheduler::group( 'myplugin' )->recurring( 'myplugin_sweep', DAY_IN_SECONDS, static fn() => null );
+		jobs_fire_init();
+
+		$this->assertCount( 1, $this->queued() );
+	}
+
+	/**
 	 * Declared after `init`, it is scheduled at once.
 	 */
 	public function test_a_recurring_job_declared_late_is_scheduled_at_once(): void {
 		$GLOBALS['jobs_did']['init'] = 1;
+		$GLOBALS['jobs_doing_cron']  = true;
 
 		Scheduler::group( 'myplugin' )->recurring( 'myplugin_sweep', DAY_IN_SECONDS, static fn() => null, [ 'first' => 0 ] );
 

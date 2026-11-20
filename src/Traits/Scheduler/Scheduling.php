@@ -113,7 +113,20 @@ trait Scheduling {
 
 		add_action( $hook, $callback, 10, count( $this->recurring[ $hook ]['args'] ) );
 
-		self::when_ready( fn() => $this->schedule_recurring( $hook ), 20 );
+		// On an admin, cron or command-line request, as at() tends its
+		// calendar: a look at the calendar is two queries, and a visitor
+		// to the front of the site -- or a webhook, or a REST call -- has
+		// no business paying for them. Action Scheduler itself runs from
+		// cron, so a job that has never been booked is booked on the
+		// request that would run it.
+		self::when_ready(
+			function () use ( $hook ): void {
+				if ( is_admin() || wp_doing_cron() || ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+					$this->schedule_recurring( $hook );
+				}
+			},
+			20
+		);
 
 		return true;
 	}
