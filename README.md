@@ -184,9 +184,28 @@ made last time. Once finished it does nothing until `reset_progress()`;
 `progress()->get()` and `->failures()` are for its screen. A failed item is
 kept and replayed, or fetched fresh by `retry_callback`.
 
-From script: `SugarSync.start( id )`, and `sugar-sync:complete`,
-`sugar-sync:cancelled` and `sugar-sync:error` on `document`, each with
-`detail.id`. Two plugins bundling this library each get their own REST
+From script: each build's syncs are in its own entry of
+`window.SugarCommerceJobs`, keyed by its script handle -- hand the handle to
+your script with `Sync::script_handle()` and call
+`window.SugarCommerceJobs[ handle ].start( id )` (or `.cancel( id )`).
+`sugar-sync:complete`, `sugar-sync:cancelled` and `sugar-sync:error` fire on
+`document`, each with `detail.id` and `detail.build`, the handle of the build
+that ran it -- two plugins may both have a sync called `import`.
+
+```php
+wp_localize_script( 'myplugin-admin', 'myPluginAdmin', [ 'jobs' => Sync::script_handle() ] );
+```
+
+```js
+window.SugarCommerceJobs[ myPluginAdmin.jobs ].start( 'shop_orders' );
+document.addEventListener( 'sugar-sync:complete', ( e ) => {
+	if ( e.detail.build === myPluginAdmin.jobs && e.detail.id === 'shop_orders' ) { /* … */ }
+} );
+```
+
+Each build's copy of the script answers only the buttons that name it
+(`data-sync-build`, which `button()` writes), so one plugin's copy never runs
+another's syncs. Two plugins bundling this library each get their own REST
 namespace, script handle and option names, derived from the Strauss prefix;
 `Runtime::use_prefix( 'myplugin' )` names them yourself. A prefix that itself
 starts `SugarCommerce\` keeps all its segments -- `SugarCommerce\Playground\Vendor\`

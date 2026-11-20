@@ -11,6 +11,7 @@ namespace SugarCommerce\Jobs\Tests;
 
 use SugarCommerce\Jobs\SyncRoutes;
 use SugarCommerce\Jobs\Sync;
+use SugarCommerce\Jobs\Utils\Runtime;
 use PHPUnit\Framework\TestCase;
 use WP_Error;
 use WP_REST_Request;
@@ -208,6 +209,7 @@ final class SyncTest extends TestCase {
 		$html = $this->sync()->button();
 
 		$this->assertStringContainsString( 'data-sync-id="stripe_prices"', $html );
+		$this->assertStringContainsString( 'data-sync-build="sugarcommerce-jobs-sync"', $html );
 		$this->assertStringContainsString( 'sugar-sync-trigger', $html );
 	}
 
@@ -225,20 +227,74 @@ final class SyncTest extends TestCase {
 	}
 
 	/**
-	 * The configuration is merged into a shared object rather than assigned.
+	 * The configuration is this build's entry in a registry keyed by its
+	 * script handle, merged into rather than assigned over.
 	 *
-	 * Two prefixed copies both enqueue and both localise. Assigning would mean
-	 * whichever ran last owned the object and the other plugin's syncs were
-	 * simply absent, with nothing reporting it.
+	 * Two prefixed copies both enqueue and both add their syncs. A bare
+	 * global would hand every plugin's syncs to whichever copy of the script
+	 * ran first; assigning the entry would leave the build's earlier syncs
+	 * out of it.
 	 */
-	public function test_the_javascript_config_is_merged_not_assigned(): void {
+	public function test_the_javascript_config_is_this_builds_own_entry(): void {
 		$sync = $this->sync();
 		$sync->maybe_enqueue_assets( 'toplevel_page_shop' );
 
 		$inline = implode( "\n", $GLOBALS['jobs_inline']['sugarcommerce-jobs-sync'] ?? array() );
 
-		$this->assertStringContainsString( 'window.SugarSyncConfig = window.SugarSyncConfig ||', $inline );
-		$this->assertStringContainsString( 'window.SugarSyncConfig.syncs["stripe_prices"]', $inline );
+		$this->assertSame( 'sugarcommerce-jobs-sync', Sync::script_handle() );
+		$this->assertStringContainsString( 'window.SugarCommerceJobs=window.SugarCommerceJobs||{};', $inline );
+		$this->assertStringContainsString( 'window.SugarCommerceJobs["sugarcommerce-jobs-sync"]=window.SugarCommerceJobs["sugarcommerce-jobs-sync"]||{syncs:{}};', $inline );
+		$this->assertStringContainsString( 'window.SugarCommerceJobs["sugarcommerce-jobs-sync"].syncs["stripe_prices"]=', $inline );
+		$this->assertStringNotContainsString( 'SugarSyncConfig', $inline );
+	}
+
+	/**
+	 * A build named by its plugin keys its entry, and marks its buttons,
+	 * with its own handle.
+	 */
+	public function test_a_prefixed_build_keys_its_entry_and_buttons_by_its_handle(): void {
+		Runtime::use_prefix( 'myplugin' );
+
+		try {
+			$sync = $this->sync();
+			$sync->maybe_enqueue_assets( 'toplevel_page_shop' );
+
+			$inline = implode( "\n", $GLOBALS['jobs_inline']['myplugin-sync'] ?? array() );
+
+			$this->assertSame( 'myplugin-sync', Sync::script_handle() );
+			$this->assertStringContainsString( 'window.SugarCommerceJobs["myplugin-sync"].syncs["stripe_prices"]=', $inline );
+			$this->assertStringContainsString( 'data-sync-build="myplugin-sync"', $sync->button() );
+		} finally {
+			Runtime::use_prefix( '' );
+		}
+	}
+
+	/**
+	 * Each copy of the script reads only its own entry and answers only its
+	 * own buttons.
+	 *
+	 * The script used to bind once for every copy on the page -- the first
+	 * to run served every plugin's syncs, read from one shared
+	 * window.SugarSyncConfig, and published itself as window.SugarSync. A
+	 * copy finds its entry from its own <script> element's id instead, and
+	 * passes over a button or bar that names another build.
+	 */
+	public function test_the_script_serves_only_its_own_build(): void {
+		$script = (string) file_get_contents( dirname( __DIR__ ) . '/assets/js/sync.js' );
+
+		foreach ( array( 'SugarSyncConfig', 'window.SugarSync ', 'window.SugarSync=', 'window.SugarSync.', '__bound' ) as $shared ) {
+			$this->assertStringNotContainsString( $shared, $script, "The shared {$shared} is back." );
+		}
+
+		$this->assertStringContainsString( 'document.currentScript', $script );
+		$this->assertStringContainsString( "script.id.replace( /-js$/, '' )", $script );
+		$this->assertStringContainsString( '( window.SugarCommerceJobs || {} )[ handle ]', $script );
+		$this->assertStringContainsString( "return element.dataset.syncBuild === handle;", $script );
+		$this->assertStringContainsString( 'button.dataset.syncId === id && ours( button )', $script );
+		$this->assertStringContainsString( "if ( ! button || ! ours( button ) ) {", $script );
+		$this->assertStringContainsString( 'bar.dataset.syncBuild = handle;', $script );
+		$this->assertStringContainsString( 'detail: { ...detail, build: handle }', $script );
+		$this->assertStringContainsString( 'entry.start = ', $script );
 	}
 
 	/**

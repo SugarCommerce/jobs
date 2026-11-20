@@ -11,14 +11,15 @@
  *    fetched, if there is one.
  *
  * Every button with the class `sugar-sync-trigger` starts the sync its
- * `data-sync-id` names. Or from code:
+ * `data-sync-id` names -- if its `data-sync-build` names this copy. Or from
+ * code, with the handle PHP's Sync::script_handle() gives:
  *
- *     window.SugarSync.start( 'stripe_prices' );
+ *     window.SugarCommerceJobs[ handle ].start( 'stripe_prices' );
  *     document.addEventListener( 'sugar-sync:complete', ( e ) => e.detail.id );
  *
- * Events, on document, each with `detail.id`: `sugar-sync:complete` (and
- * `detail.totals`), `sugar-sync:cancelled`, `sugar-sync:error` (and
- * `detail.message`).
+ * Events, on document, each with `detail.id` and `detail.build` (the handle
+ * of the copy that ran it): `sugar-sync:complete` (and `detail.totals`),
+ * `sugar-sync:cancelled`, `sugar-sync:error` (and `detail.message`).
  *
  * @package SugarCommerce\Jobs
  * @since   1.0.0
@@ -26,24 +27,28 @@
 ( function () {
 	'use strict';
 
-	if ( ! window.SugarSyncConfig ) {
-		return;
-	}
-
 	/*
-	 * Bind once, however many copies of this file load.
+	 * This copy's handle, from the id WordPress gives its <script> element:
+	 * "{handle}-js". Read while the script runs; afterwards
+	 * document.currentScript is null.
 	 *
-	 * Strauss gives each prefixed copy its own script handle, so two plugins
-	 * bundling this library both enqueue it and the browser runs it twice.
-	 * Without this every button gets two click handlers and every sync runs
-	 * twice against the same cursor. The copy that runs first serves every
-	 * plugin's syncs: they all add to the one SugarSyncConfig.
+	 * Strauss gives each prefixed copy of the library its own handle, so two
+	 * plugins bundling it both load this file. Each copy reads only its own
+	 * entry in window.SugarCommerceJobs and answers only the buttons that
+	 * name its handle: one plugin's copy never drives another's syncs.
 	 */
-	if ( window.SugarSync && window.SugarSync.__bound ) {
+	const script = document.currentScript;
+	const handle = script && script.id ? script.id.replace( /-js$/, '' ) : '';
+	const entry = ( window.SugarCommerceJobs || {} )[ handle ];
+
+	// Bound once, should the same copy run twice.
+	if ( ! entry || entry.bound ) {
 		return;
 	}
 
-	const syncs = window.SugarSyncConfig.syncs;
+	entry.bound = true;
+
+	const syncs = entry.syncs || {};
 
 	/** @type {Object<string, boolean>} */
 	const cancelled = {};
@@ -77,18 +82,28 @@
 	 * @param {Object} detail What happened.
 	 */
 	function announce( name, detail ) {
-		document.dispatchEvent( new CustomEvent( 'sugar-sync:' + name, { detail } ) );
+		document.dispatchEvent( new CustomEvent( 'sugar-sync:' + name, { detail: { ...detail, build: handle } } ) );
 	}
 
 	/**
-	 * Every trigger button for a sync.
+	 * Whether an element -- a button or a bar -- is this copy's.
+	 *
+	 * @param {Element} element The element.
+	 * @return {boolean} Whether its `data-sync-build` names this copy.
+	 */
+	function ours( element ) {
+		return element.dataset.syncBuild === handle;
+	}
+
+	/**
+	 * Every trigger button for one of this copy's syncs.
 	 *
 	 * @param {string} id The sync.
 	 * @return {Element[]} The buttons.
 	 */
 	function triggers( id ) {
 		return Array.from( document.querySelectorAll( '.sugar-sync-trigger' ) ).filter(
-			( button ) => button.dataset.syncId === id
+			( button ) => button.dataset.syncId === id && ours( button )
 		);
 	}
 
@@ -126,12 +141,6 @@
 
 	const api = {
 		/**
-		 * Set once this file has bound its handlers; read by the guard at
-		 * the top.
-		 */
-		__bound: true,
-
-		/**
 		 * Start a sync.
 		 *
 		 * @param {string} id        The sync.
@@ -143,7 +152,7 @@
 
 			if ( ! config ) {
 				// eslint-disable-next-line no-console
-				console.error( '[SugarSync] Unknown sync:', id );
+				console.error( '[SugarCommerce Jobs] Unknown sync:', id, handle );
 				return;
 			}
 
@@ -152,7 +161,7 @@
 
 			if ( ! target ) {
 				// eslint-disable-next-line no-console
-				console.error( '[SugarSync] Container not found:', selector );
+				console.error( '[SugarCommerce Jobs] Container not found:', selector );
 				return;
 			}
 
@@ -169,7 +178,7 @@
 
 			let bar = target.previousElementSibling;
 
-			if ( ! bar || ! bar.classList.contains( 'sugar-sync-bar' ) || bar.dataset.syncId !== id ) {
+			if ( ! bar || ! bar.classList.contains( 'sugar-sync-bar' ) || bar.dataset.syncId !== id || ! ours( bar ) ) {
 				bar = this._createBar( id );
 				target.before( bar );
 			}
@@ -306,6 +315,7 @@
 
 			bar.className = 'sugar-sync-bar';
 			bar.dataset.syncId = id;
+			bar.dataset.syncBuild = handle;
 			bar.setAttribute( 'role', 'status' );
 			bar.innerHTML = [
 				'<div class="sugar-sync-header">',
@@ -499,12 +509,15 @@
 		},
 	};
 
-	window.SugarSync = api;
+	// The public part, in this copy's own entry.
+	entry.start = ( id, container ) => api.start( id, container );
+	entry.cancel = ( id ) => api.cancel( id );
 
 	document.addEventListener( 'click', ( event ) => {
 		const button = event.target.closest ? event.target.closest( '.sugar-sync-trigger' ) : null;
 
-		if ( ! button ) {
+		// Another plugin's copy answers its own buttons.
+		if ( ! button || ! ours( button ) ) {
 			return;
 		}
 

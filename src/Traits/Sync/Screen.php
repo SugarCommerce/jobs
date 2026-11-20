@@ -65,18 +65,25 @@ trait Screen {
 	 * @return void
 	 */
 	public function enqueue(): void {
-		$handle = Runtime::handle( 'sync' );
+		$handle = self::script_handle();
 
 		if ( ! wp_script_is( $handle, 'registered' ) ) {
 			Assets::register_style( $handle, __FILE__, 'css/sync.css' );
 			Assets::register_script( $handle, __FILE__, 'js/sync.js' );
 
-			// Merged into rather than assigned over. Strauss gives each
-			// prefixed copy its own handle, so two plugins bundling this
-			// library both enqueue the script and both add their syncs; the
-			// script that runs first serves them all. Assigning the object
-			// would leave whichever plugin ran first with no syncs at all.
-			wp_add_inline_script( $handle, 'window.SugarSyncConfig = window.SugarSyncConfig || { syncs: {} };', 'before' );
+			// This build's own entry in a registry keyed by script handle.
+			// Two plugins bundling this library each load their own copy of
+			// the script, and each copy reads only the entry its handle
+			// names: a bare global would hand one copy every plugin's syncs,
+			// and that copy -- whichever version it is -- would drive them.
+			wp_add_inline_script(
+				$handle,
+				sprintf(
+					'window.SugarCommerceJobs=window.SugarCommerceJobs||{};window.SugarCommerceJobs[%1$s]=window.SugarCommerceJobs[%1$s]||{syncs:{}};',
+					wp_json_encode( $handle )
+				),
+				'before'
+			);
 		}
 
 		wp_enqueue_style( $handle );
@@ -87,7 +94,8 @@ trait Screen {
 		wp_add_inline_script(
 			$handle,
 			sprintf(
-				'window.SugarSyncConfig.syncs[%s] = %s;',
+				'window.SugarCommerceJobs[%s].syncs[%s]=%s;',
+				wp_json_encode( $handle ),
 				wp_json_encode( $this->id ),
 				wp_json_encode(
 					[
@@ -102,6 +110,23 @@ trait Screen {
 			),
 			'before'
 		);
+	}
+
+	/**
+	 * This build's script handle, which is also its key in
+	 * `window.SugarCommerceJobs`.
+	 *
+	 * A plugin's own script reaches its syncs through it:
+	 * `window.SugarCommerceJobs[ handle ].start( id )`. Each plugin bundling
+	 * this library has its own, so hand it to the script rather than writing
+	 * it out.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return string
+	 */
+	public static function script_handle(): string {
+		return Runtime::handle( 'sync' );
 	}
 
 	/**
@@ -135,8 +160,9 @@ trait Screen {
 	/**
 	 * Print the button that starts the sync.
 	 *
-	 * The script binds to it by itself. Nothing for a user who may not run
-	 * the sync.
+	 * The script binds to it by itself: this build's copy of it, which the
+	 * button names in `data-sync-build`, and no other. Nothing for a user
+	 * who may not run the sync.
 	 *
 	 * @since 1.0.0
 	 *
@@ -173,9 +199,10 @@ trait Screen {
 		// No glyph in front of the label: core draws none on its own
 		// buttons, and the spinning state is core's .updating-message.
 		return sprintf(
-			'<button type="button" class="%s sugar-sync-trigger" data-sync-id="%s" data-container="%s">%s</button>',
+			'<button type="button" class="%s sugar-sync-trigger" data-sync-id="%s" data-sync-build="%s" data-container="%s">%s</button>',
 			esc_attr( (string) ( $args['class'] ?? $this->config['button_class'] ) ),
 			esc_attr( $this->id ),
+			esc_attr( self::script_handle() ),
 			esc_attr( (string) ( $args['container'] ?? $this->config['container'] ) ),
 			esc_html( '' !== $label ? $label : __( 'Sync', 'sugarcommerce' ) )
 		);
