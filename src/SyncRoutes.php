@@ -46,7 +46,7 @@ final class SyncRoutes {
 	 * @since 1.0.0
 	 * @var int
 	 */
-	public const TRANSIENT_TTL = 600;
+	public const int TRANSIENT_TTL = 600;
 
 	/**
 	 * Whether the routes are hooked.

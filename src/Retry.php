@@ -56,7 +56,7 @@ final class Retry {
 	 * @since 1.0.0
 	 * @var int[]
 	 */
-	public const WAITS = [ 60, 300, 900, 3600, 21600 ];
+	public const array WAITS = [ 60, 300, 900, 3600, 21600 ];
 
 	/**
 	 * The longest a `Retry-After` is honoured for.
@@ -66,7 +66,7 @@ final class Retry {
 	 * @since 1.0.0
 	 * @var int
 	 */
-	public const MAX_RETRY_AFTER = 86400;
+	public const int MAX_RETRY_AFTER = 86400;
 
 	/**
 	 * How far a stated wait is spread, by default: a percentage either way.
@@ -80,7 +80,7 @@ final class Retry {
 	 * @since 1.0.0
 	 * @var int
 	 */
-	public const JITTER = 10;
+	public const int JITTER = 10;
 
 	/**
 	 * Seconds to wait after each failure, in order.

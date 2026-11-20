@@ -54,7 +54,7 @@ final class Progress {
 	 * @since 1.0.0
 	 * @var int
 	 */
-	public const MAX_FAILURES = 500;
+	public const int MAX_FAILURES = 500;
 
 	/**
 	 * The option the progress is kept in.

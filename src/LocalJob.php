@@ -44,7 +44,7 @@ final class LocalJob {
 	 *
 	 * @var array<string, string>
 	 */
-	private const DAYS = [
+	private const array DAYS = [
 		'mon' => '1',
 		'tue' => '2',
 		'wed' => '3',
@@ -59,7 +59,7 @@ final class LocalJob {
 	 *
 	 * @var array<string, string>
 	 */
-	private const ALIASES = [
+	private const array ALIASES = [
 		'daily'   => 'day',
 		'weekly'  => 'week:mon',
 		'monthly' => 'month:1',

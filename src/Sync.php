@@ -12,9 +12,8 @@ declare( strict_types=1 );
 
 namespace SugarCommerce\Jobs;
 
-use SugarCommerce\Jobs\Utils\Runtime;
-use SugarCommerce\Plugin\Assets;
-use Throwable;
+use SugarCommerce\Jobs\Traits\Sync\Items;
+use SugarCommerce\Jobs\Traits\Sync\Screen;
 use WP_Error;
 
 /**
@@ -51,6 +50,9 @@ use WP_Error;
  */
 final class Sync {
 
+	use Items;
+	use Screen;
+
 	/**
 	 * Every sync registered with this copy, by ID.
 	 *
@@ -65,7 +67,7 @@ final class Sync {
 	 * @since 1.0.0
 	 * @var array<string, mixed>
 	 */
-	private const DEFAULTS = [
+	private const array DEFAULTS = [
 		'hook_suffix'        => '',
 		'capability'         => 'manage_options',
 		'title'              => '',
@@ -90,7 +92,7 @@ final class Sync {
 	 * @since 1.0.0
 	 * @var string[]
 	 */
-	private const RESULTS = [ 'created', 'updated', 'skipped' ];
+	private const array RESULTS = [ 'created', 'updated', 'skipped' ];
 
 	/**
 	 * The sync's ID.
@@ -283,314 +285,9 @@ final class Sync {
 	// The screen
 	// =========================================================================
 
-	/**
-	 * Load the script and styles on the sync's screens, for those allowed
-	 * to run it.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string $hook_suffix The screen.
-	 *
-	 * @return void
-	 */
-	public function maybe_enqueue_assets( $hook_suffix ): void {
-		if ( ! $this->is_target_screen( (string) $hook_suffix ) || ! current_user_can( (string) $this->config['capability'] ) ) {
-			return;
-		}
-
-		$this->enqueue();
-	}
-
-	/**
-	 * Whether the button is on a screen.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string $hook_suffix The screen.
-	 *
-	 * @return bool
-	 */
-	public function is_target_screen( string $hook_suffix ): bool {
-		return in_array( $hook_suffix, array_map( 'strval', (array) $this->config['hook_suffix'] ), true );
-	}
-
-	/**
-	 * Load the script and styles, and hand the script this sync.
-	 *
-	 * Done on the sync's screens by itself; call it for a button anywhere
-	 * else -- in a flyout, on a screen of another plugin's.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return void
-	 */
-	public function enqueue(): void {
-		$handle = Runtime::handle( 'sync' );
-
-		if ( ! wp_script_is( $handle, 'registered' ) ) {
-			Assets::register_style( $handle, __FILE__, 'css/sync.css' );
-			Assets::register_script( $handle, __FILE__, 'js/sync.js' );
-
-			// Merged into rather than assigned over. Strauss gives each
-			// prefixed copy its own handle, so two plugins bundling this
-			// library both enqueue the script and both add their syncs; the
-			// script that runs first serves them all. Assigning the object
-			// would leave whichever plugin ran first with no syncs at all.
-			wp_add_inline_script( $handle, 'window.SugarSyncConfig = window.SugarSyncConfig || { syncs: {} };', 'before' );
-		}
-
-		wp_enqueue_style( $handle );
-		wp_enqueue_script( $handle );
-
-		// The endpoint is the sync's own and not the page's: every build has
-		// its own REST namespace.
-		wp_add_inline_script(
-			$handle,
-			sprintf(
-				'window.SugarSyncConfig.syncs[%s] = %s;',
-				wp_json_encode( $this->id ),
-				wp_json_encode(
-					[
-						'title'              => (string) $this->config['title'],
-						'container'          => (string) $this->config['container'],
-						'reload_on_complete' => (bool) $this->config['reload_on_complete'],
-						'restUrl'            => rest_url( SyncRoutes::rest_namespace() . '/' ),
-						'restNonce'          => wp_create_nonce( 'wp_rest' ),
-						'i18n'               => self::strings(),
-					]
-				)
-			),
-			'before'
-		);
-	}
-
-	/**
-	 * What the script says, translated.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return array<string, string>
-	 */
-	private static function strings(): array {
-		return [
-			'fetching'      => __( 'Fetching…', 'sugarcommerce' ),
-			'syncing'       => __( 'Syncing…', 'sugarcommerce' ),
-			'cancel'        => __( 'Cancel', 'sugarcommerce' ),
-			'confirmCancel' => __( 'Cancel the current sync operation?', 'sugarcommerce' ),
-			'cancelled'     => __( 'Sync cancelled.', 'sugarcommerce' ),
-			'complete'      => __( 'Sync complete!', 'sugarcommerce' ),
-			'created'       => __( 'created', 'sugarcommerce' ),
-			'updated'       => __( 'updated', 'sugarcommerce' ),
-			'skipped'       => __( 'skipped', 'sugarcommerce' ),
-			'failed'        => __( 'failed', 'sugarcommerce' ),
-			'items'         => __( 'items', 'sugarcommerce' ),
-			'synced'        => __( 'synced', 'sugarcommerce' ),
-			'of'            => __( 'of', 'sugarcommerce' ),
-			'syncFailed'    => __( 'Sync failed. Please try again.', 'sugarcommerce' ),
-			'dismiss'       => __( 'Dismiss', 'sugarcommerce' ),
-			'reloading'     => __( 'Reloading…', 'sugarcommerce' ),
-		];
-	}
-
-	/**
-	 * Print the button that starts the sync.
-	 *
-	 * The script binds to it by itself. Nothing for a user who may not run
-	 * the sync.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param array<string, string> $args {
-	 *     Optional.
-	 *
-	 *     @type string $label     The text. Default `button_label`.
-	 *     @type string $class     The classes. Default `button_class`.
-	 *     @type string $container Where the bar goes. Default `container`.
-	 * }
-	 *
-	 * @return void
-	 */
-	public function render_button( array $args = [] ): void {
-		echo $this->button( $args ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped as built, below.
-	}
-
-	/**
-	 * The button that starts the sync, as markup.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param array<string, string> $args See self::render_button().
-	 *
-	 * @return string Empty for a user who may not run the sync.
-	 */
-	public function button( array $args = [] ): string {
-		if ( ! current_user_can( (string) $this->config['capability'] ) ) {
-			return '';
-		}
-
-		$label = (string) ( $args['label'] ?? $this->config['button_label'] );
-
-		// No glyph in front of the label: core draws none on its own
-		// buttons, and the spinning state is core's .updating-message.
-		return sprintf(
-			'<button type="button" class="%s sugar-sync-trigger" data-sync-id="%s" data-container="%s">%s</button>',
-			esc_attr( (string) ( $args['class'] ?? $this->config['button_class'] ) ),
-			esc_attr( $this->id ),
-			esc_attr( (string) ( $args['container'] ?? $this->config['container'] ) ),
-			esc_html( '' !== $label ? $label : __( 'Sync', 'sugarcommerce' ) )
-		);
-	}
-
 	// =========================================================================
 	// The work
 	// =========================================================================
-
-	/**
-	 * Process one item, and write down what came of it when resuming.
-	 *
-	 * A process callback that throws is a failure with the exception's
-	 * message; one that answers false is a failure too.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param mixed  $item The item, as the data callback listed it.
-	 * @param string $name What to call it.
-	 *
-	 * @return array{status: string, error?: string}
-	 */
-	public function process_item( mixed $item, string $name ): array {
-		$callback = $this->process_callback();
-
-		try {
-			$result = null === $callback
-				? new WP_Error( 'no_process_callback', __( 'No process callback defined.', 'sugarcommerce' ) )
-				: $callback( $item );
-		} catch ( Throwable $e ) {
-			$result = new WP_Error( 'process_error', $e->getMessage() );
-		}
-
-		if ( false === $result ) {
-			// The plainest way a callback has of saying no.
-			$result = new WP_Error( 'process_failed', __( 'The item could not be processed.', 'sugarcommerce' ) );
-		}
-
-		$status = in_array( $result, self::RESULTS, true ) ? $result : 'created';
-
-		// Without a way to fetch a fresh copy, a retry replays the item
-		// itself, so it is kept with its failure.
-		$this->progress()?->record(
-			$this->id,
-			$this->item_id( $item ),
-			$name,
-			$result instanceof WP_Error ? $result : $status,
-			$result instanceof WP_Error && null === $this->retry_callback() ? [ 'item' => $item ] : []
-		);
-
-		if ( $result instanceof WP_Error ) {
-			return [
-				'status' => 'failed',
-				'error'  => $result->get_error_message(),
-			];
-		}
-
-		return [ 'status' => $status ];
-	}
-
-	/**
-	 * The sync's progress, when it resumes.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return Progress|null Null for a sync registered without `resume`.
-	 */
-	public function progress(): ?Progress {
-		if ( empty( $this->config['resume'] ) ) {
-			return null;
-		}
-
-		if ( null === $this->progress ) {
-			$option = (string) $this->config['progress_option'];
-
-			$this->progress = new Progress(
-				'' !== $option ? $option : Runtime::key( 'sync_progress_' . $this->id ),
-				(int) $this->config['max_failures']
-			);
-		}
-
-		return $this->progress;
-	}
-
-	/**
-	 * Start the sync again from its first page, forgetting what it counted
-	 * and what failed. Nothing for a sync that does not resume.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @return void
-	 */
-	public function reset_progress(): void {
-		$this->progress()?->reset();
-	}
-
-	/**
-	 * An item's ID, to key its failure by.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param mixed $item The item.
-	 *
-	 * @return string Empty when it has none.
-	 */
-	public function item_id( mixed $item ): string {
-		$callback = $this->config['id_callback'];
-
-		if ( is_callable( $callback ) ) {
-			try {
-				return (string) $callback( $item );
-			} catch ( Throwable $e ) {
-				return '';
-			}
-		}
-
-		$id = is_array( $item ) ? ( $item['id'] ?? '' ) : ( is_object( $item ) ? ( $item->id ?? '' ) : '' );
-
-		return is_scalar( $id ) ? (string) $id : '';
-	}
-
-	/**
-	 * What to call an item on screen.
-	 *
-	 * A name callback that throws is not worth abandoning a page over; the
-	 * name is decoration on a progress bar.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param mixed $item The item.
-	 *
-	 * @return string
-	 */
-	public function item_name( mixed $item ): string {
-		$callback = $this->name_callback();
-
-		if ( null !== $callback ) {
-			try {
-				return (string) $callback( $item );
-			} catch ( Throwable $e ) {
-				// Guessed below instead.
-				unset( $e );
-			}
-		}
-
-		foreach ( [ 'name', 'title', 'label', 'product_name', 'email', 'id' ] as $field ) {
-			$value = is_array( $item ) ? ( $item[ $field ] ?? null ) : ( is_object( $item ) ? ( $item->$field ?? null ) : null );
-
-			if ( is_scalar( $value ) && '' !== (string) $value ) {
-				return (string) $value;
-			}
-		}
-
-		return '';
-	}
 
 	// =========================================================================
 	// Accessors

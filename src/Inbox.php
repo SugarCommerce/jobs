@@ -64,7 +64,7 @@ final class Inbox {
 	 * @since 1.0.0
 	 * @var int
 	 */
-	public const STALE_AFTER = 300;
+	public const int STALE_AFTER = 300;
 
 	/**
 	 * The database.

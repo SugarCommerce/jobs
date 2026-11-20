@@ -208,61 +208,31 @@ and went, because WordPress and Action Scheduler already do them:
 * one run at a time: an Action Scheduler action runs once, and a plugin that
   needs a database lock takes MySQL's `GET_LOCK()`.
 
-From the retired SaaS `outbox` package the inbox and the budget are here, on
-`$wpdb` instead of SQLite. Its queue, lock, pass and steps are not, for the
-reason above.
-
 Its script and stylesheet URLs come from `SugarCommerce\Plugin\Assets`, the
 one asset-URL helper of these packages.
 
-## Moving from arraypress/wp-*
+## Security
 
-This library is `wp-register-cron`'s scheduler and `wp-inline-sync` in one.
-The global helpers are gone -- a global function is the one thing Strauss
-cannot prefix -- and wp-register-cron's WP-Cron wrapper is core's again:
+* The sync routes run only for a signed-in user with the sync's capability
+  (`manage_options` unless it says otherwise), through the REST API's own
+  nonce check, and a sync id is sanitised before it is looked up.
+* Each user's fetched page is kept apart from every other user's.
+* The sync bar escapes every item name and error message before it shows
+  them, so a product name from another service cannot run script.
+* `Inbox` refuses a table or column name that is not a plain identifier, and
+  every value goes through `$wpdb->prepare()`; one delivery, retried at once,
+  is processed once.
 
-| Was | Now |
-|---|---|
-| `register_cron_schedule( $name, $interval, $display )` | core's `cron_schedules` filter |
-| `register_cron_job( $hook, $config )` | `add_action( $hook, $callback )` + `wp_schedule_event()` when `! wp_next_scheduled()`, or `Scheduler::group()->recurring()` |
-| `unregister_cron_job( $hook, $args )` | `wp_clear_scheduled_hook( $hook, $args )` |
-| `unregister_cron_jobs()` | `wp_unschedule_hook( $hook )` for each hook; `Scheduler::group()->unschedule_all()` for Action Scheduler |
-| `cron_job_next_run( $hook, $args )` | `wp_next_scheduled( $hook, $args )` |
-| `register_sync( $id, $config )`, `new Sync( $id, $config )` | `Sync::register( $id, $config )` |
-| `get_sync( $id )`, `has_sync( $id )` | `Sync::get( $id )`, `Sync::has( $id )` |
-| `render_sync_button( $id, $args )` | `Sync::get( $id )?->render_button( $args )` |
-| `get_sync_button( $id, $args )` | `Sync::get( $id )?->button( $args ) ?? ''` |
+## Layout
 
-Classes, under `SugarCommerce\Jobs`:
-
-| Was | Now |
-|---|---|
-| `RegisterCron\Jobs`, `RegisterCron\Schedules` | removed: core's WP-Cron functions, as above |
-| `RegisterCron\Scheduler`, `RegisterCron\LocalJob` | `Scheduler`, `LocalJob` -- same methods |
-| `Scheduler::transient_failure( $error )` | `Retry::transient( $error )` -- a 408 is now worth retrying too |
-| `InlineSync\Registry::instance()->get / has / all / unregister` | `Sync::get / has / all / unregister` |
-| `InlineSync\Registry::instance()->get_for_screen( $hook )` | `Sync::on_screen( $hook )` |
-| `$sync->get_id() / get_config() / get_button()` | `$sync->id() / config() / button()` |
-| `$sync->get_data_callback()` and the other three | `$sync->data_callback()` and the other three |
-| `InlineSync\RestApi`, `RestApi::CHUNK_SIZE` | `SyncRoutes`; the `chunk_size` setting, default 5 |
-| `InlineSync\Retry::register / page / process` | `SyncRetry::register / page / process` |
-| `InlineSync\Progress`, `InlineSync\Utils\Runtime` | `Progress`, `Utils\Runtime` |
-| `Sync::assets_url()` | `SugarCommerce\Plugin\Assets::url( __FILE__, … )` |
-| a stated schedule waited to the second | spread a tenth either way by default; `'jitter' => 0` for exact |
-| `Cron`, `Queue`, `Table`, `Outcome`, `Lock`, `Pass`, `Steps` (earlier builds of this package) | removed -- WP-Cron, Action Scheduler and `GET_LOCK()`, as in "What it does not do"; `Inbox` and `Retry` stay |
-
-In the browser, and stored:
-
-| Was | Now |
-|---|---|
-| `window.InlineSync.start( id )` / `.cancel( id )` | `window.SugarSync.start( id )` / `.cancel( id )` -- no jQuery needed |
-| jQuery `inline-sync:complete` `( event, id, totals )` | `sugar-sync:complete` on `document`: `event.detail.id`, `.totals` |
-| `inline-sync:cancelled`, `inline-sync:error` `( event, id, message )` | `sugar-sync:cancelled`, `sugar-sync:error`: `event.detail.id`, `.message` |
-| CSS `.inline-sync-*`, `window.InlineSyncConfig` | `.sugar-sync-*`, `window.SugarSyncConfig` |
-| progress option `{prefix}_inline_sync_progress_{id}` | `{prefix}_sugarcommerce_jobs_sync_progress_{id}` -- pass `progress_option` to keep a run in progress |
-| REST `{prefix}-inline-sync/v1`, text domain `arraypress` | `{prefix}-sugarcommerce-jobs/v1`, `sugarcommerce` |
-
-A button's `container` argument now does what it says; it used to be ignored.
+* `src/Scheduler.php`: a plugin's jobs on Action Scheduler;
+  `src/Traits/Scheduler/` holds scheduling and what a failure does.
+  `Retry.php`, `LocalJob.php`, `Budget.php`, `Inbox.php` and `Claim.php` are
+  its parts.
+* `src/Sync.php`: a registered batch sync; `src/Traits/Sync/` holds its screen
+  (button, script, words) and its items. `SyncRoutes.php`, `SyncRetry.php` and
+  `Progress.php` are the REST routes, retrying failed items and the saved run.
+* `src/Utils/Runtime.php`: the names this copy of the library uses.
 
 ## Requirements
 

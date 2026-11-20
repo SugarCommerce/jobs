@@ -47,7 +47,7 @@ final class Runtime {
 	 *
 	 * @since 1.0.0
 	 */
-	private const LIBRARY = 'sugarcommerce_jobs';
+	private const string LIBRARY = 'sugarcommerce_jobs';
 
 	/**
 	 * How many segments this class's own namespace has --
@@ -57,7 +57,7 @@ final class Runtime {
 	 *
 	 * @since 1.0.0
 	 */
-	private const OWN_SEGMENTS = 3;
+	private const int OWN_SEGMENTS = 3;
 
 	/**
 	 * A prefix set by the plugin, in place of the derived one.
