@@ -14,6 +14,7 @@ namespace SugarCommerce\Jobs;
 
 use InvalidArgumentException;
 use SugarCommerce\Dates\Clock;
+use SugarCommerce\Jobs\Models\Claim;
 
 /**
  * Class Inbox

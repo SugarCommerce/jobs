@@ -12,8 +12,8 @@ namespace SugarCommerce\Jobs\Tests;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use SugarCommerce\Dates\Clock;
-use SugarCommerce\Jobs\Claim;
 use SugarCommerce\Jobs\Inbox;
+use SugarCommerce\Jobs\Models\Claim;
 
 /**
  * Each incoming event is handled once: a repeat of a finished one is done,

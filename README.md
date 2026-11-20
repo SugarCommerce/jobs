@@ -119,7 +119,8 @@ new Retry( retry_if: fn( WP_Error $e ) => 'invalid_request' !== $e->get_error_co
 ## Receiving once
 
 ```php
-use SugarCommerce\Jobs\{Claim, Inbox};
+use SugarCommerce\Jobs\Inbox;
+use SugarCommerce\Jobs\Models\Claim;
 
 $inbox = new Inbox( $wpdb->prefix . 'myplugin_events' );   // ->schema() for dbDelta()
 $claim = $inbox->claim( $event->id, [ 'type' => $event->type ] );
@@ -227,8 +228,9 @@ one asset-URL helper of these packages.
 
 * `src/Scheduler.php`: a plugin's jobs on Action Scheduler;
   `src/Traits/Scheduler/` holds scheduling and what a failure does.
-  `Retry.php`, `LocalJob.php`, `Budget.php`, `Inbox.php` and `Claim.php` are
-  its parts.
+  `Retry.php`, `LocalJob.php`, `Budget.php` and `Inbox.php` are its parts.
+* `src/Models/`: data shapes and nothing that does work. `Claim.php` is
+  the inbox's answer to a delivery: run it, already done, or busy.
 * `src/Sync.php`: a registered batch sync; `src/Traits/Sync/` holds its screen
   (button, script, words) and its items. `SyncRoutes.php`, `SyncRetry.php` and
   `Progress.php` are the REST routes, retrying failed items and the saved run.

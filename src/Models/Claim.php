@@ -10,7 +10,7 @@
 
 declare( strict_types=1 );
 
-namespace SugarCommerce\Jobs;
+namespace SugarCommerce\Jobs\Models;
 
 /**
  * Enum Claim
